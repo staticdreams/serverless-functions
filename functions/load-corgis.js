@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { hasuraRequest } from "./util/hasura.js";
 
 exports.handler = async () => {
 
@@ -12,18 +13,35 @@ exports.handler = async () => {
       }
     }).then(res => res.json());
 
-  const [unsplashData] = await Promise.all([unslashPromise]);
+  const hasuraPromise = hasuraRequest({
+    query: `
+      mutation InsertOrUpdateBoops($corgis: [boops_insert_input!]!) {
+        boops: insert_boops(objects: $corgis, on_conflict: {constraint: boops_pkey, update_columns: id}) {
+          returning {
+            count
+            id
+          }
+        }
+      }
+      `,
+    variables: {
+      corgis: corgis.map(({ id }) => ({ id, count: 0 }))
+    }
+  });
+
+  const [unsplashData, hasuraData] = await Promise.all([unslashPromise, hasuraPromise]);
 
   const completeData = corgis.map((corgi) => {
     const photo = unsplashData.find((p) => corgi.id === p.id);
+    const boops = hasuraData.boops.returning.find((b) => b.id === corgi.id);
     return {
       ...corgi,
       alt: photo.alt_description,
       credit: photo.user.name,
       url: `${photo.urls.raw}&auto=format&fit=crop&w=500&h=500&q=80&crop=entropy`,
+      boops: boops.count
     };
   });
-
 
   return {
     statusCode: 200,
